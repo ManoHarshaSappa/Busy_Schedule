@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Busy Calendar (Month & Week views)</title>
+  <style>
+    :root{
+      --bg:#0b0f17;          /* dark background */
+      --panel:#131a24;       /* cards */
+      --text:#e7edf5;
+      --muted:#9bb0c0;
+      --chip:#213044;
+      --shadow: 0 2px 12px rgba(0,0,0,.35);
+
+      /* Fixed base colors per weekday (Sun..Sat) */
+      --sun:#ff7aa2; /* pink */
+      --mon:#7aa2ff; /* blue */
+      --tue:#6ecb63; /* green */
+      --wed:#f4a261; /* orange */
+      --thu:#cba6f7; /* purple */
+      --fri:#ffd166; /* amber */
+      --sat:#74c7ec; /* teal/blue */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font:15px/1.35 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+      background:var(--bg); color:var(--text);
+      -webkit-tap-highlight-color: transparent;
+      padding:env(safe-area-inset-top) 8px env(safe-area-inset-bottom);
+    }
+    .wrap{width:100%; max-width:1200px; margin:0 auto; position:relative; z-index:1}
+    header{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:8px; padding:10px 10px; background:var(--panel); border-radius:14px; box-shadow:var(--shadow);
+      position:sticky; top:env(safe-area-inset-top); z-index:5; margin-bottom:10px; flex-wrap:wrap;
+    }
+    header h1{font-size:16px; margin:0; font-weight:700; letter-spacing:.2px}
+    .controls{display:flex; align-items:center; gap:6px}
+    button, select{
+      background:var(--chip); color:var(--text); border:1px solid #2c3b52;
+      padding:7px 10px; border-radius:12px; cursor:pointer; font-weight:700; font-size:13px;
+    }
+    button[aria-pressed="true"]{outline:2px solid #2c3b52}
+    button:active{transform:translateY(1px)}
+
+    /* calendar grid */
+    .grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+    .dow{ color:var(--muted); text-align:center; font-weight:800; padding:6px 0; letter-spacing:.3px; font-size:12px }
+    .day{
+      min-height:84px; background:var(--panel); border:1px dashed #273348;
+      border-radius:12px; padding:6px; position:relative; box-shadow:var(--shadow);
+      display:flex; flex-direction:column; gap:6px; overflow:hidden;
+    }
+    .day .num{ position:absolute; top:6px; right:8px; font-size:11px; color:var(--muted); }
+    .block{ border-radius:10px; padding:6px 8px; font-size:11px; font-weight:800; letter-spacing:.25px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; outline:2px solid transparent;
+    }
+
+    /* Gradient backgrounds by weekday (dark → light) */
+    .day[data-wd="0"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--sun) 40%, black) 0%, color-mix(in oklab, var(--sun) 20%, black) 100%); outline-color: var(--sun); }
+    .day[data-wd="1"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--mon) 40%, black) 0%, color-mix(in oklab, var(--mon) 20%, black) 100%); outline-color: var(--mon); }
+    .day[data-wd="2"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--tue) 40%, black) 0%, color-mix(in oklab, var(--tue) 20%, black) 100%); outline-color: var(--tue); }
+    .day[data-wd="3"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--wed) 40%, black) 0%, color-mix(in oklab, var(--wed) 20%, black) 100%); outline-color: var(--wed); }
+    .day[data-wd="4"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--thu) 40%, black) 0%, color-mix(in oklab, var(--thu) 20%, black) 100%); outline-color: var(--thu); }
+    .day[data-wd="5"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--fri) 40%, black) 0%, color-mix(in oklab, var(--fri) 20%, black) 100%); outline-color: var(--fri); }
+    .day[data-wd="6"] .block{ background: linear-gradient(180deg, color-mix(in oklab, var(--sat) 40%, black) 0%, color-mix(in oklab, var(--sat) 20%, black) 100%); outline-color: var(--sat); }
+
+    .legend{display:flex; gap:12px; align-items:center; color:var(--muted); font-size:11px; flex-wrap:wrap; margin-top:6px}
+    .chip{display:inline-flex; align-items:center; gap:6px; padding:6px 8px; border-radius:999px; background:#0f1622; border:1px solid #243249}
+    .dot{width:10px; height:10px; border-radius:6px; display:inline-block}
+    .dot.sun{background:var(--sun)} .dot.mon{background:var(--mon)} .dot.tue{background:var(--tue)}
+    .dot.wed{background:var(--wed)} .dot.thu{background:var(--thu)} .dot.fri{background:var(--fri)} .dot.sat{background:var(--sat)}
+    .foot{margin:10px 2px 0; color:var(--muted); font-size:12px; text-align:center}
+
+    /* Larger layout for tablets/desktops */
+    @media (min-width: 600px){
+      body{padding:24px}
+      header{padding:14px 16px; border-radius:16px}
+      header h1{font-size:18px}
+      .grid{gap:8px}
+      .day{min-height:120px; border-radius:14px; padding:8px}
+      .dow{font-size:13px}
+      .block{font-size:12px}
+    }
+
+    /* --- subtle app background glow --- */
+    body:before{
+      content:""; position:fixed; inset:-40%; pointer-events:none;
+      background: radial-gradient(60% 60% at 30% 10%, rgba(93,169,255,.06), transparent 60%),
+                  radial-gradient(50% 50% at 80% 80%, rgba(255,122,162,.06), transparent 60%),
+                  radial-gradient(40% 40% at 10% 85%, rgba(116,199,236,.05), transparent 60%);
+      filter: blur(40px); z-index:0;
+    }
+    .day:focus-visible{outline:2px solid #2e4361}
+    .day.tapped{box-shadow:0 0 0 2px #2e4361, var(--shadow)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="controls">
+        <button id="prev">◀</button>
+        <button id="today">Today</button>
+        <button id="next">▶</button>
+      </div>
+      <h1 id="title">Month YYYY</h1>
+      <div class="controls">
+        <div class="view-toggle" style="display:flex; gap:6px">
+          <button id="modeMonth" aria-pressed="true">Month</button>
+          <button id="modeWeek" aria-pressed="false">Week</button>
+        </div>
+        <label style="display:flex; align-items:center; gap:6px; color:var(--muted); font-weight:700">
+          Month
+          <select id="month"></select>
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; color:var(--muted); font-weight:700">
+          Year
+          <select id="year"></select>
+        </label>
+      </div>
+    </header>
+
+    <div class="grid" id="dow"></div>
+    <div class="grid" id="days"></div>
+
+    <!-- Day detail modal -->
+    <div id="modal" aria-hidden="true" role="dialog" aria-modal="true" style="position:fixed; inset:0; display:none; align-items:flex-end; justify-content:center; z-index:50">
+      <div id="backdrop" style="position:absolute; inset:0; background:rgba(3,10,20,.6)"></div>
+      <div id="sheet" style="position:relative; width:100%; max-width:520px; background:#0f1622; border:1px solid #213047; border-top-left-radius:16px; border-top-right-radius:16px; box-shadow:0 -8px 24px rgba(0,0,0,.45); transform:translateY(8px); transition:transform .2s ease; padding:14px 14px 18px">
+        <div style="height:4px; width:48px; border-radius:999px; background:#223045; margin:6px auto 12px"></div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px">
+          <h2 id="modalTitle" style="margin:0; font-size:16px; font-weight:800; letter-spacing:.2px">Day</h2>
+          <button id="closeBtn" aria-label="Close" style="background:#1a2332; color:#e7edf5; border:1px solid #2c3b52; padding:6px 10px; border-radius:10px; font-weight:800">✕</button>
+        </div>
+        <div id="modalBody" style="display:flex; flex-direction:column; gap:8px"></div>
+        <div id="emptyMsg" style="display:none; color:#9bb0c0; font-size:14px">No busy blocks for this day.</div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="legend" id="legend"></div>
+      <p style="margin-top:6px">Month & Week views. Everything shown is <strong>BUSY</strong>. Edit <code>BUSY_DATES</code> and <code>RECURRING</code>. No storage — static GitHub HTML.</p>
+    </div>
+  </div>
+
+  <script>
+
+
+
+
+
+
+
+    /* ============================
+       EDIT THESE TWO SECTIONS ONLY
+       ============================ */
+       const BUSY_DATES = [
+  { date: '2025-09-21', start: '09:30', end: '13:30', label: '' },
+  { date: '2025-09-23', start: '05:30', end: '09:00', label: '' },
+  { date: '2025-09-23', start: '16:30', end: '20:00', label: '' },
+  { date: '2025-09-23', start: '20:00', end: '23:45', label: '' },
+  { date: '2025-09-28', start: '20:00', end: '23:45', label: '' },
+  { date: '2025-09-29', start: '13:00', end: '17:00', label: '' },
+  { date: '2025-10-02', start: '20:00', end: '23:45', label: '' },
+  { date: '2025-10-04', start: '12:30', end: '15:30', label: '' },
+  { date: '2025-10-04', start: '16:30', end: '23:00', label: '' },
+  { date: '2025-10-05', start: '10:30', end: '14:00', label: '' },
+  { date: '2025-10-06', start: '12:00', end: '15:00', label: '' },
+  { date: '2025-10-09', start: '12:00', end: '15:00', label: '' },
+  { date: '2025-10-11', start: '16:30', end: '23:00', label: '' },
+  { date: '2025-10-12', start: '10:00', end: '13:30', label: '' },
+  { date: '2025-10-12', start: '16:30', end: '20:00', label: '' },
+  { date: '2025-10-18', start: '09:00', end: '12:30', label: '' },
+  { date: '2025-10-18', start: '16:30', end: '23:00', label: '' },
+  { date: '2025-10-19', start: '09:30', end: '13:00', label: '' },
+  { date: '2025-10-25', start: '16:30', end: '23:00', label: '' },
+];
+
+const RECURRING = [
+  // Add recurring patterns here if needed
+];
+
+
+
+
+
+
+
+
+
+    /* ===== END OF EDIT ZONE ===== */
+
+    // State
+    let mode = 'month'; // 'month' | 'week'
+    let weekAnchor = new Date();
+
+    // Helpers
+    const pad = n => String(n).padStart(2,'0');
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    const now = new Date();
+    let viewY = now.getFullYear();
+    let viewM = now.getMonth();
+
+    const title = document.getElementById('title');
+    const monthSel = document.getElementById('month');
+    const yearSel = document.getElementById('year');
+    const modeMonthBtn = document.getElementById('modeMonth');
+    const modeWeekBtn  = document.getElementById('modeWeek');
+
+    MONTHS.forEach((m,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=m; monthSel.appendChild(o); });
+    for(let y=now.getFullYear()-3; y<=now.getFullYear()+3; y++){ const o=document.createElement('option'); o.value=y; o.textContent=y; yearSel.appendChild(o); }
+
+    monthSel.addEventListener('change', ()=>{ viewM = +monthSel.value; render();});
+    yearSel.addEventListener('change', ()=>{ viewY = +yearSel.value; render();});
+
+    document.getElementById('prev').onclick = ()=>{
+      if(mode==='month'){ viewM--; if(viewM<0){viewM=11; viewY--} }
+      else { weekAnchor = addDays(startOfWeek(weekAnchor), -7); viewY = weekAnchor.getFullYear(); viewM = weekAnchor.getMonth(); }
+      render();
+    };
+    document.getElementById('next').onclick = ()=>{
+      if(mode==='month'){ viewM++; if(viewM>11){viewM=0; viewY++} }
+      else { weekAnchor = addDays(startOfWeek(weekAnchor), 7); viewY = weekAnchor.getFullYear(); viewM = weekAnchor.getMonth(); }
+      render();
+    };
+    document.getElementById('today').onclick = ()=>{
+      if(mode==='month'){ viewM = now.getMonth(); viewY = now.getFullYear(); }
+      else { weekAnchor = new Date(); viewY = weekAnchor.getFullYear(); viewM = weekAnchor.getMonth(); }
+      render();
+    };
+
+    modeMonthBtn.onclick = ()=>{ mode='month'; modeMonthBtn.setAttribute('aria-pressed','true'); modeWeekBtn.setAttribute('aria-pressed','false'); render(); };
+    modeWeekBtn.onclick  = ()=>{ mode='week';  weekAnchor = new Date(viewY, viewM, 1); modeWeekBtn.setAttribute('aria-pressed','true'); modeMonthBtn.setAttribute('aria-pressed','false'); render(); };
+
+    // Build DOW header chips
+    const legend = document.getElementById('legend');
+    [['Sun','sun'], ['Mon','mon'], ['Tue','tue'], ['Wed','wed'], ['Thu','thu'], ['Fri','fri'], ['Sat','sat']].forEach(([name,cls])=>{
+      const chip = document.createElement('span'); chip.className='chip';
+      const dot = document.createElement('span'); dot.className='dot '+cls; chip.appendChild(dot);
+      const txt = document.createElement('span'); txt.textContent = name; chip.appendChild(txt);
+      legend.appendChild(chip);
+    });
+
+    function* monthCells(year, month){
+      const first = new Date(year, month, 1);
+      const last = new Date(year, month+1, 0);
+      for(let i=0;i<first.getDay();i++) yield null; // lead blanks
+      for(let d=1; d<=last.getDate(); d++) yield new Date(year, month, d);
+    }
+    function startOfWeek(d){ const x = new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate() - x.getDay()); return x; }
+    function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+    function weekRange(anchor){ const start = startOfWeek(anchor); return Array.from({length:7}, (_,i)=> addDays(start, i)); }
+
+    function applyRecurring(year, month){
+      const out = [];
+      const first = new Date(year, month, 1);
+      const last = new Date(year, month+1, 0);
+      for(let d = new Date(first); d<=last; d.setDate(d.getDate()+1)){
+        const key = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        const wd = d.getDay();
+        RECURRING.forEach(r=>{ if(r.weekday===wd){ r.ranges?.forEach(([s,e])=> out.push({date:key, start:s, end:e, label:''})); }});
+      }
+      return out;
+    }
+
+    function addBlocksToCell(cell, blocks){
+      if(!blocks.length){ const spacer = document.createElement('div'); spacer.style.minHeight='6px'; spacer.style.visibility='hidden'; cell.appendChild(spacer); return; }
+      blocks.sort((a,b)=> a.start.localeCompare(b.start));
+      blocks.forEach(b=>{ const el = document.createElement('div'); el.className='block'; const label = b.label ? ` · ${b.label}` : ''; el.textContent = `${b.start}–${b.end}${label}`; cell.appendChild(el); });
+    }
+
+    function render(){
+      const days = document.getElementById('days');
+      const dowEl = document.getElementById('dow');
+      dowEl.innerHTML=''; days.innerHTML='';
+
+      monthSel.value = viewM; yearSel.value = viewY;
+
+      if(mode==='month'){
+        title.textContent = `${MONTHS[viewM]} ${viewY}`;
+        DOW.forEach(d=>{ const el=document.createElement('div'); el.className='dow'; el.textContent=d; dowEl.appendChild(el); });
+        const recur = applyRecurring(viewY, viewM);
+        const all = [...recur, ...BUSY_DATES];
+        const cells = [...monthCells(viewY, viewM)];
+        const fillTo = Math.ceil(cells.length/7)*7; while(cells.length<fillTo) cells.push(null);
+        cells.forEach(dt=>{
+          const cell = document.createElement('button'); cell.className='day'; cell.type='button';
+          if(dt){ const wd = dt.getDay(); cell.dataset.wd = wd; const num = document.createElement('div'); num.className='num'; num.textContent = dt.getDate(); cell.appendChild(num);
+            const key = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+            const blocks = all.filter(b=> b.date===key);
+            addBlocksToCell(cell, blocks);
+            cell.addEventListener('click', ()=>{ weekAnchor = dt; openModal(dt, blocks); });
+          } else { cell.disabled = true; cell.style.opacity=.4; }
+          days.appendChild(cell);
+        });
+      } else {
+        const wdays = weekRange(weekAnchor);
+        const label = `${MONTHS[wdays[0].getMonth()]} ${wdays[0].getDate()} – ${MONTHS[wdays[6].getMonth()]} ${wdays[6].getDate()}, ${wdays[6].getFullYear()}`;
+        title.textContent = label;
+        DOW.forEach(d=>{ const el=document.createElement('div'); el.className='dow'; el.textContent=d; dowEl.appendChild(el); });
+        wdays.forEach(dt=>{
+          const cell = document.createElement('button'); cell.className='day'; cell.type='button';
+          const wd = dt.getDay(); cell.dataset.wd = wd; const num = document.createElement('div'); num.className='num'; num.textContent = dt.getDate(); cell.appendChild(num);
+          const recur = applyRecurring(dt.getFullYear(), dt.getMonth());
+          const key = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+          const blocks = [...recur, ...BUSY_DATES].filter(b=> b.date===key);
+          addBlocksToCell(cell, blocks);
+          cell.addEventListener('click', ()=> openModal(dt, blocks));
+          days.appendChild(cell);
+        });
+      }
+
+      // show/hide month/year pickers when in week view (optional)
+      const showPickers = mode==='month';
+      monthSel.parentElement.style.display = showPickers? 'flex' : 'none';
+      yearSel .parentElement.style.display = showPickers? 'flex' : 'none';
+
+      modeMonthBtn.setAttribute('aria-pressed', mode==='month');
+      modeWeekBtn .setAttribute('aria-pressed', mode==='week');
+    }
+
+    // Modal
+    const modal = document.getElementById('modal');
+    const sheet = document.getElementById('sheet');
+    const backdrop = document.getElementById('backdrop');
+    const closeBtn = document.getElementById('closeBtn');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    const emptyMsg = document.getElementById('emptyMsg');
+
+    function openModal(dateObj, blocks){
+      const y = dateObj.getFullYear();
+      const m = MONTHS[dateObj.getMonth()];
+      const d = dateObj.getDate();
+      modalTitle.textContent = `${m} ${d}, ${y}`;
+      modalBody.innerHTML = '';
+      if(blocks && blocks.length){
+        emptyMsg.style.display = 'none';
+        blocks.sort((a,b)=> a.start.localeCompare(b.start));
+        blocks.forEach(b=>{
+          const row = document.createElement('div');
+          row.style.display='flex'; row.style.alignItems='center'; row.style.justifyContent='space-between';
+          row.style.gap='10px'; row.style.background='#101a29'; row.style.border='1px solid #23334a'; row.style.borderRadius='10px'; row.style.padding='10px 12px';
+          const t = document.createElement('div'); t.style.fontWeight='800'; t.textContent = `${b.start} – ${b.end}`;
+          const lbl = document.createElement('div'); lbl.style.color = '#9bb0c0'; lbl.style.fontSize='12px'; lbl.textContent = b.label || 'Busy';
+          row.appendChild(t); row.appendChild(lbl);
+          modalBody.appendChild(row);
+        });
+      } else { emptyMsg.style.display = 'block'; }
+      modal.style.display = 'flex'; requestAnimationFrame(()=>{ sheet.style.transform='translateY(0)' });
+      document.addEventListener('keydown', escClose);
+    }
+    function closeModal(){ sheet.style.transform='translateY(8px)'; modal.style.display = 'none'; document.removeEventListener('keydown', escClose); }
+    function escClose(e){ if(e.key==='Escape') closeModal(); }
+    backdrop.addEventListener('click', closeModal);
+    closeBtn.addEventListener('click', closeModal);
+
+    render();
+  </script>
+</body>
+</html>
